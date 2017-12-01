@@ -1,9 +1,6 @@
 import numpy as np
 import copy
-import time
-import tensorflow as tf
 import pickle
-
 
 def batch_generator(int_arr, batch_size, max_time):
     arr = copy.copy(int_arr)
