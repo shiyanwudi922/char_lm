@@ -94,21 +94,44 @@ class CharRNN:
 
             # 通过lstm_outputs得到概率
             seq_output = tf.concat(self.lstm_outputs, 1)
-            x = tf.reshape(seq_output, [-1, self.lstm_size])
+            self.x = tf.reshape(seq_output, [-1, self.lstm_size])
 
             with tf.variable_scope('softmax'):
-                softmax_w = tf.Variable(tf.truncated_normal([self.lstm_size, self.num_classes], stddev=0.1))
-                softmax_b = tf.Variable(tf.zeros(self.num_classes))
+                self.softmax_w = tf.Variable(tf.truncated_normal([self.lstm_size, self.num_classes], stddev=0.1))
+                self.softmax_b = tf.Variable(tf.zeros(self.num_classes))
 
-            self.logits = tf.matmul(x, softmax_w) + softmax_b
+            self.logits = tf.matmul(self.x, self.softmax_w) + self.softmax_b
             self.proba_prediction = tf.nn.softmax(self.logits, name='predictions')
 
     def build_loss(self):
         with tf.name_scope('loss'):
-            y_one_hot = tf.one_hot(self.targets, self.num_classes)
-            y_reshaped = tf.reshape(y_one_hot, self.logits.get_shape())
-            loss = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=y_reshaped)
-            self.loss = tf.reduce_mean(loss)
+            def sampled_loss(labels, inputs, w, b, num_classes):
+                local_labels = tf.reshape(labels, [-1, 1])
+                # We need to compute the sampled_softmax_loss using 32bit floats to
+                # avoid numerical instabilities.
+                local_w_t = tf.cast(tf.transpose(w), tf.float32)
+                local_b = tf.cast(b, tf.float32)
+                local_inputs = tf.cast(inputs, tf.float32)
+                return tf.cast(
+                    tf.nn.sampled_softmax_loss(
+                        weights=local_w_t,
+                        biases=local_b,
+                        labels=local_labels,
+                        inputs=local_inputs,
+                        num_sampled=512,
+                        num_classes=num_classes),
+                    tf.float32
+                )
+            self.loss = tf.reduce_mean(
+                sampled_loss(self.targets, self.x, self.softmax_w, self.softmax_b, self.num_classes)
+            )
+
+
+
+            # y_one_hot = tf.one_hot(self.targets, self.num_classes)
+            # y_reshaped = tf.reshape(y_one_hot, self.logits.get_shape())
+            # loss = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=y_reshaped)
+            # self.loss = tf.reduce_mean(loss)
 
     def build_optimizer(self):
         # 使用clipping gradients
