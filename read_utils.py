@@ -22,6 +22,11 @@ def batch_generator(int_arr, batch_size, max_time):
             y = arr[:, n*max_time+1:(n+1)*max_time+1]
             yield x, y
 
+def get_batch_cnt(int_arr, batch_size, max_time):
+    arr_len = len(int_arr)
+    batch_cnt = int((int(arr_len/batch_size)-1)/max_time)
+    return batch_cnt
+
 
 class TextConverter(object):
     def __init__(self, text=None, max_vocab=5000, vocab_file=None):

@@ -5,7 +5,7 @@ import math
 import sys
 import numpy as np
 
-from read_utils import TextConverter, batch_generator
+from read_utils import TextConverter, batch_generator, get_batch_cnt
 from model import CharRNN
 import os
 import codecs
@@ -19,7 +19,8 @@ tf.app.flags.DEFINE_integer('num_layers', 2, 'number of lstm layers')
 tf.app.flags.DEFINE_boolean('use_embedding', False, 'whether to use embedding')
 tf.app.flags.DEFINE_integer('embedding_size', 128, 'size of embedding')
 tf.app.flags.DEFINE_float('learning_rate', 0.5, 'initial learning rate')
-tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.95, 'Learning rate decays by this much.')
+tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.5, 'Learning rate decays by this much.')
+tf.app.flags.DEFINE_boolean('immediate_learning_rate_decay', False, 'decay learning rate immediately')
 tf.app.flags.DEFINE_float("grad_clip", 5.0,"Clip gradients to this norm.")
 tf.app.flags.DEFINE_float('keep_prob', 0.5, 'dropout rate during training')
 tf.app.flags.DEFINE_string('input_file', '', 'utf8 encoded text file')
@@ -87,10 +88,13 @@ def train():
 
         arr = converter.text_to_arr(text)
         g = batch_generator(arr, FLAGS.batch_size, FLAGS.max_time)
+        batch_cnt = get_batch_cnt(arr, FLAGS.batch_size, FLAGS.max_time)
 
         # create model
         print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.lstm_size))
         model = create_model(sess, converter.vocab_size, False, model_path)
+        if(FLAGS.immediate_learning_rate_decay):
+            sess.run(model.learning_rate_decay_op)
 
         step_time, loss = 0.0, 0.0
         current_step = 0
@@ -100,10 +104,15 @@ def train():
 
             start_time = time.time()
             batch_loss, final_state = model.train_step(sess, inputs, targets, initial_state)
-            initial_state = final_state
             step_time = (time.time()-start_time) / FLAGS.steps_per_checkpoint
             loss += batch_loss / FLAGS.steps_per_checkpoint
             current_step += 1
+
+            if current_step % batch_cnt == 0:
+                initial_state = sess.run(model.initial_state)
+                print("reset initial state")
+            else:
+                initial_state = final_state
 
             if current_step % FLAGS.steps_per_checkpoint == 0:
                 perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
@@ -134,37 +143,42 @@ def sample():
         sys.stdout.write("> ")
         sys.stdout.flush()
         start_str = sys.stdin.readline().strip().decode('utf-8')
-        start = converter.text_to_arr(start_str)
+        while start_str:
+            start = converter.text_to_arr(start_str)
 
-        samples = [c for c in start]
-        initial_state = sess.run(model.initial_state)
-        x = np.zeros((1, 1))
-        for c in start:
-            x[0, 0] = c
-            feed = {model.inputs: x,
-                    model.initial_state: initial_state}
-            preds, final_state = sess.run([model.proba_prediction, model.final_state],
-                    feed_dict=feed)
-            initial_state = final_state
+            samples = [c for c in start]
+            initial_state = sess.run(model.initial_state)
+            x = np.zeros((1, 1))
+            for c in start:
+                x[0, 0] = c
+                feed = {model.inputs: x,
+                        model.initial_state: initial_state}
+                preds, final_state = sess.run([model.proba_prediction, model.final_state],
+                        feed_dict=feed)
+                initial_state = final_state
 
-        c = pick_top_n(preds, converter.vocab_size)
-        while c == converter.vocab_size - 1:
-            c = pick_top_n(preds, converter.vocab_size)
-        samples.append(c)
-
-        for i in range(FLAGS.sample_length):
-            x[0, 0] = c
-            feed = {model.inputs: x,
-                    model.initial_state: initial_state}
-            preds, final_state = sess.run([model.proba_prediction, model.final_state],
-                                        feed_dict=feed)
-            initial_state = final_state
             c = pick_top_n(preds, converter.vocab_size)
             while c == converter.vocab_size - 1:
                 c = pick_top_n(preds, converter.vocab_size)
             samples.append(c)
 
-        print(converter.arr_to_text(np.array(samples)))
+            for i in range(FLAGS.sample_length):
+                x[0, 0] = c
+                feed = {model.inputs: x,
+                        model.initial_state: initial_state}
+                preds, final_state = sess.run([model.proba_prediction, model.final_state],
+                                            feed_dict=feed)
+                initial_state = final_state
+                c = pick_top_n(preds, converter.vocab_size)
+                while c == converter.vocab_size - 1:
+                    c = pick_top_n(preds, converter.vocab_size)
+                samples.append(c)
+
+            print(converter.arr_to_text(np.array(samples)))
+
+            sys.stdout.write("> ")
+            sys.stdout.flush()
+            start_str = sys.stdin.readline().strip().decode('utf-8')
 
         #     # 不断生成字符，直到达到指定数目
         #     for i in range(sample_length):
