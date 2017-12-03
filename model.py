@@ -11,7 +11,7 @@ class CharRNN:
     def __init__(self,
                  num_classes,
                  batch_size=64,
-                 max_time=50,
+                 # max_time=50,
                  lstm_size=128,
                  num_layers=2,
                  learning_rate=0.01,
@@ -20,11 +20,14 @@ class CharRNN:
                  sampling=False,
                  keep_prob=0.5,
                  use_embedding=False,
-                 embedding_size=128):
+                 embedding_size=128,
+                 use_sample_loss=False):
         if sampling is True:
-            self.batch_size, self.max_time = 1, 1
+            # self.batch_size, self.max_time = 1, 1
+            self.batch_size = 1
         else:
-            self.batch_size, self.max_time = batch_size, max_time
+            # self.batch_size, self.max_time = batch_size, max_time
+            self.batch_size = batch_size
 
         self.num_classes = num_classes
         # self.batch_size = batch_size
@@ -42,6 +45,7 @@ class CharRNN:
         self.keep_prob = keep_prob
         self.use_embedding = use_embedding
         self.embedding_size = embedding_size
+        self.use_sample_loss = use_sample_loss
 
         # tf.reset_default_graph()
         self.build_inputs()
@@ -53,9 +57,9 @@ class CharRNN:
     def build_inputs(self):
         with tf.name_scope('inputs'):
             self.inputs = tf.placeholder(tf.int32, shape=(
-                self.batch_size, self.max_time), name='inputs')
+                self.batch_size, None), name='inputs')
             self.targets = tf.placeholder(tf.int32, shape=(
-                self.batch_size, self.max_time), name='targets')
+                self.batch_size, None), name='targets')
             # self.keep_prob = tf.placeholder(tf.float32, name='keep_prob')
 
             # 对于中文，需要使用embedding层
@@ -122,16 +126,14 @@ class CharRNN:
                         num_classes=num_classes),
                     tf.float32
                 )
-            self.loss = tf.reduce_mean(
-                sampled_loss(self.targets, self.x, self.softmax_w, self.softmax_b, self.num_classes)
-            )
 
-
-
-            # y_one_hot = tf.one_hot(self.targets, self.num_classes)
-            # y_reshaped = tf.reshape(y_one_hot, self.logits.get_shape())
-            # loss = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=y_reshaped)
-            # self.loss = tf.reduce_mean(loss)
+            if(self.use_sample_loss):
+                self.loss = tf.reduce_mean(sampled_loss(self.targets, self.x, self.softmax_w, self.softmax_b, self.num_classes))
+            else:
+                y_one_hot = tf.one_hot(self.targets, self.num_classes)
+                y_reshaped = tf.reshape(y_one_hot, [-1, self.num_classes])
+                loss = tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=y_reshaped)
+                self.loss = tf.reduce_mean(loss)
 
     def build_optimizer(self):
         # 使用clipping gradients
@@ -150,136 +152,6 @@ class CharRNN:
 
         return batch_loss, final_state
 
-    # def sample(self, sess, start, vocab_size, sample_length):
-    #
-    #     samples = [c for c in start]
-    #
-    #     new_state = sess.run(self.initial_state)
-    #     preds = np.ones((vocab_size,))  # for prime=[]
-    #     for c in start:
-    #         x = np.zeros((1, 1))
-    #         # 输入单个字符
-    #         x[0, 0] = c
-    #         feed = {self.inputs: x,
-    #                 self.initial_state: new_state}
-    #         preds, new_state = sess.run([self.proba_prediction, self.final_state],
-    #                                     feed_dict=feed)
-    #
-    #     c = pick_top_n(preds, vocab_size)
-    #     # 添加字符到samples中
-    #     samples.append(c)
-    #
-    #     # 不断生成字符，直到达到指定数目
-    #     for i in range(sample_length):
-    #         x = np.zeros((1, 1))
-    #         x[0, 0] = c
-    #         feed = {self.inputs: x,
-    #                 self.initial_state: new_state}
-    #         preds, new_state = sess.run([self.proba_prediction, self.final_state],
-    #                                     feed_dict=feed)
-    #
-    #         c = pick_top_n(preds, vocab_size)
-    #         samples.append(c)
-    #
-    #     print(samples)
+    def set_learning_rate(self, sess, learning_rate):
+        sess.run(self.learning_rate.assign(learning_rate))
 
-
-        # with self.session as sess:
-        #     sess.run(tf.global_variables_initializer())
-            # Train network
-            # step = 0
-            # new_state = sess.run(self.initial_state)
-            # for x, y in batch_generator:
-            #     step += 1
-            #     start = time.time()
-            #     feed = {self.inputs: x,
-            #             self.targets: y,
-            #             self.keep_prob: self.train_keep_prob,
-            #             self.initial_state: new_state}
-            #     batch_loss, new_state, _ = sess.run([self.loss,
-            #                                          self.final_state,
-            #                                          self.optimizer],
-            #                                         feed_dict=feed)
-            #
-            #     end = time.time()
-                # control the print lines
-                # if step % log_every_n == 0:
-                #     print('step: {}/{}... '.format(step, max_steps),
-                #           'loss: {:.4f}... '.format(batch_loss),
-                #           '{:.4f} sec/batch'.format((end - start)))
-                # if (step % save_every_n == 0):
-                #     self.saver.save(sess, os.path.join(save_path, 'model'), global_step=step)
-                # if step >= max_steps:
-                #     break
-            # self.saver.save(sess, os.path.join(save_path, 'model'), global_step=step)
-
-    # def train(self, batch_generator, max_steps, save_path, save_every_n, log_every_n):
-    #     self.session = tf.Session()
-    #     with self.session as sess:
-    #         sess.run(tf.global_variables_initializer())
-    #         # Train network
-    #         step = 0
-    #         new_state = sess.run(self.initial_state)
-    #         for x, y in batch_generator:
-    #             step += 1
-    #             start = time.time()
-    #             feed = {self.inputs: x,
-    #                     self.targets: y,
-    #                     self.keep_prob: self.train_keep_prob,
-    #                     self.initial_state: new_state}
-    #             batch_loss, new_state, _ = sess.run([self.loss,
-    #                                                  self.final_state,
-    #                                                  self.optimizer],
-    #                                                 feed_dict=feed)
-    #
-    #             end = time.time()
-    #             # control the print lines
-    #             if step % log_every_n == 0:
-    #                 print('step: {}/{}... '.format(step, max_steps),
-    #                       'loss: {:.4f}... '.format(batch_loss),
-    #                       '{:.4f} sec/batch'.format((end - start)))
-    #             if (step % save_every_n == 0):
-    #                 self.saver.save(sess, os.path.join(save_path, 'model'), global_step=step)
-    #             if step >= max_steps:
-    #                 break
-    #         self.saver.save(sess, os.path.join(save_path, 'model'), global_step=step)
-
-
-    # def sample(self, sess, n_samples, start_idx_arr, vocab_size):
-    #     idx_arr = [idx for idx in start_idx_arr]
-    #     # sess = self.session
-    #     # initial_state = sess.run(self.initial_state)
-    #     # preds = np.ones((vocab_size, ))  # for prime=[]
-    #     # for c in prime:
-    #     #     x = np.zeros((1, 1))
-    #     #     # 输入单个字符
-    #     #     x[0, 0] = c
-    #     #     feed = {self.inputs: x,
-    #     #             self.keep_prob: 1.,
-    #     #             self.initial_state: new_state}
-    #     #     preds, new_state = sess.run([self.proba_prediction, self.final_state],
-    #     #                                 feed_dict=feed)
-    #
-    #     c = pick_top_n(preds, vocab_size)
-    #     # 添加字符到samples中
-    #     samples.append(c)
-    #
-    #     # 不断生成字符，直到达到指定数目
-    #     for i in range(n_samples):
-    #         x = np.zeros((1, 1))
-    #         x[0, 0] = c
-    #         feed = {self.inputs: x,
-    #                 self.keep_prob: 1.,
-    #                 self.initial_state: new_state}
-    #         preds, new_state = sess.run([self.proba_prediction, self.final_state],
-    #                                     feed_dict=feed)
-    #
-    #         c = pick_top_n(preds, vocab_size)
-    #         samples.append(c)
-    #
-    #     return np.array(samples)
-
-    # def load(self, checkpoint):
-    #     self.session = tf.Session()
-    #     self.saver.restore(self.session, checkpoint)
-    #     print('Restored from: {}'.format(checkpoint))

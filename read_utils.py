@@ -19,6 +19,8 @@ def batch_generator(int_arr, batch_size, max_time):
         np.random.shuffle(arr)
         for n in range(0, batch_cnt):
             x = arr[:, n*max_time:(n+1)*max_time]
+            # y = np.zeros_like(x)
+            # y[:, :-1], y[:, -1] = x[:, 1:], x[:, 0]  # arr[:, n*max_time+1:(n+1)*max_time+1]
             y = arr[:, n*max_time+1:(n+1)*max_time+1]
             yield x, y
 
