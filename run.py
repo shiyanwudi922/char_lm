@@ -78,91 +78,6 @@ def create_model(session, num_classes, sampling, model_path):
         session.run(tf.global_variables_initializer())
     return model
 
-# def train():
-#
-#     with tf.Session() as sess:
-#         with tf.variable_scope("CharLM") as scope:
-#             model_path = os.path.join(FLAGS.train_dir, FLAGS.model_name)
-#             checkpoint_path = os.path.join(model_path, "generate.ckpt")
-#             if(not os.path.exists(model_path)):
-#                 os.makedirs(model_path)
-#
-#             with codecs.open(FLAGS.input_file, encoding='utf-8') as f:
-#                 text = f.read().replace("\n", "")
-#             converter = TextConverter(text, FLAGS.max_vocab_size)
-#             print("actual vocabulary size is: " + str(converter.vocab_size))
-#             converter.save_to_file(os.path.join(model_path, 'converter.pkl'))
-#
-#             arr = converter.text_to_arr(text)
-#             sent_len_p = [1.0/len(train_sentence_length) for l in train_sentence_length]
-#             max_time = np.random.choice(train_sentence_length, 1, p=sent_len_p)[0]
-#             gen = batch_generator(arr, FLAGS.batch_size, max_time)
-#             batch_cnt = get_batch_cnt(arr, FLAGS.batch_size, max_time)
-#             current_step_batch = 0
-#
-#             # create model
-#             print("Creating %d layers of %d units for max time %d." % (FLAGS.num_layers, FLAGS.lstm_size, max_time))
-#             model = create_model(sess, max_time, converter.vocab_size, False, model_path)
-#                 # create_model(sess, converter.vocab_size, False, model_path)
-#             if(FLAGS.immediate_learning_rate_decay):
-#                 sess.run(model.learning_rate_decay_op)
-#
-#             step_time, loss = 0.0, 0.0
-#             current_step = 0
-#             previous_losses = []
-#             initial_state = sess.run(model.initial_state)
-#             while True:
-#
-#             for inputs, targets in gen:
-#
-#                 start_time = time.time()
-#                 batch_loss, final_state = model.train_step(sess, inputs, targets, initial_state)
-#                 step_time += (time.time()-start_time) / FLAGS.steps_per_checkpoint
-#                 loss += batch_loss / FLAGS.steps_per_checkpoint
-#                 current_step += 1
-#                 current_step_batch += 1
-#
-#                 if current_step_batch % batch_cnt == 0:
-#                     initial_state = sess.run(model.initial_state)
-#                     print("reset initial state")
-#                 else:
-#                     initial_state = final_state
-#
-#                 if current_step % FLAGS.steps_per_sentence_length == 0:
-#                     # model.saver.save(sess, checkpoint_path, global_step=model.global_step)
-#                     max_time = np.random.choice(train_sentence_length, 1, p=sent_len_p)[0]
-#                     gen = batch_generator(arr, FLAGS.batch_size, max_time)
-#                     batch_cnt = get_batch_cnt(arr, FLAGS.batch_size, max_time)
-#                     current_step_batch = 0
-#                     print("change max time: %d" % (max_time))
-#                     model.inputs = tf.placeholder(tf.int32, shape=(
-#                         FLAGS.batch_size, max_time), name='inputs')
-#                     model.targets = tf.placeholder(tf.int32, shape=(
-#                         FLAGS.batch_size, max_time), name='targets')
-#                     # scope.reuse_variables()
-#                     # print("Creating %d layers of %d units for max time %d." % (FLAGS.num_layers, FLAGS.lstm_size, max_time))
-#                     # model = create_model(sess, max_time, converter.vocab_size, False, model_path)
-#
-#                 if current_step % FLAGS.steps_per_checkpoint == 0:
-#                     perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
-#                     print("global step %d learning rate %.4f step-time %.2f perplexity "
-#                           "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
-#                                     step_time, perplexity))
-#
-#                     if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
-#                         sess.run(model.learning_rate_decay_op)
-#                     previous_losses.append(loss)
-#
-#                     model.saver.save(sess, checkpoint_path, global_step=model.global_step)
-#                     step_time, loss = 0.0, 0.0
-#
-#                     sys.stdout.flush()
-#
-#                 if current_step >= FLAGS.max_train_steps:
-#                     break
-#             model.saver.save(sess, checkpoint_path, global_step=model.global_step)
-
-
 def train():
 
     with tf.Session() as sess:
@@ -221,7 +136,7 @@ def train():
                           "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
                                     step_time, perplexity))
 
-                    if len(previous_losses) > 2 and loss > max(previous_losses[-3:]):
+                    if len(previous_losses) > 2 and loss > max(previous_losses[-3:]) and sess.run(model.learning_rate) >= 0.0002:
                         sess.run(model.learning_rate_decay_op)
                     previous_losses.append(loss)
 

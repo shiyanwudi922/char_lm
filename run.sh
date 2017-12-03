@@ -18,7 +18,7 @@ python run.py \
 --model_name novel_4 \
 --use_embedding \
 --sampling \
---sample_length 300
+--sample_length 500
 
 
 
