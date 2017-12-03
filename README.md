@@ -32,7 +32,9 @@ Reading model parameters from train_dir/poetry/generate.ckpt-3400
 
 
 以《神雕侠侣》为训练数据，过程为：
+
 训练过程
+
 python run.py \
 --train_dir train_dir \
 --model_name novel \
@@ -49,6 +51,7 @@ python run.py \
 
 
 预测过程
+
 python run.py \
 --train_dir /Users/baihai/projects/char_lm/train_dir \
 --model_name novel_4 \
