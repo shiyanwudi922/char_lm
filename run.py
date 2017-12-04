@@ -13,7 +13,6 @@ import codecs
 tf.app.flags.DEFINE_string('train_dir', 'default', 'directory for training')
 tf.app.flags.DEFINE_string('model_name', 'default', 'name of the model')
 tf.app.flags.DEFINE_integer('batch_size', 32, 'batch size')
-# tf.app.flags.DEFINE_integer('max_time', 100, 'length of one training sample')
 tf.app.flags.DEFINE_integer('lstm_size', 128, 'size of hidden state of lstm')
 tf.app.flags.DEFINE_integer('num_layers', 2, 'number of lstm layers')
 tf.app.flags.DEFINE_boolean('use_embedding', False, 'whether to use embedding')
@@ -21,7 +20,6 @@ tf.app.flags.DEFINE_integer('embedding_size', 128, 'size of embedding')
 tf.app.flags.DEFINE_boolean("use_sample_loss", False, "whether to use candidate sampling.")
 tf.app.flags.DEFINE_float('learning_rate', 0.1, 'initial learning rate')
 tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.5, 'Learning rate decays by this much.')
-# tf.app.flags.DEFINE_boolean('immediate_learning_rate_decay', False, 'decay learning rate immediately')
 tf.app.flags.DEFINE_float('set_learning_rate', 0.0, 'set learning rate by hand')
 tf.app.flags.DEFINE_float("grad_clip", 5.0,"Clip gradients to this norm.")
 tf.app.flags.DEFINE_float('keep_prob', 0.5, 'dropout rate during training')
@@ -29,7 +27,7 @@ tf.app.flags.DEFINE_string('input_file', '', 'utf8 encoded text file')
 tf.app.flags.DEFINE_integer('max_train_steps', 10000, 'max steps to train')
 tf.app.flags.DEFINE_integer('steps_per_sentence_length', 1000, 'max steps to train')
 tf.app.flags.DEFINE_integer('steps_per_checkpoint', 100, 'How many training steps to do per checkpoint.')
-# tf.app.flags.DEFINE_integer('steps_per_log', 10, 'How many training steps to do per log.')
+tf.app.flags.DEFINE_integer('steps_per_log', 100, 'How many training steps to print info.')
 tf.app.flags.DEFINE_integer('max_vocab_size', 5000, 'max char number')
 tf.app.flags.DEFINE_boolean("sampling", False, "Set to True for sampling.")
 tf.app.flags.DEFINE_integer('sample_length', 30, 'max length to generate')
@@ -37,7 +35,6 @@ tf.app.flags.DEFINE_integer('sample_length', 30, 'max length to generate')
 FLAGS = tf.app.flags.FLAGS
 
 train_sentence_length = [10, 30, 50, 70, 100, 150]
-# train_sentence_length = [12]
 
 def pick_top_n(preds, vocab_size, top_n=5):
     p = np.squeeze(preds)
@@ -66,9 +63,6 @@ def create_model(session, num_classes, sampling, model_path):
         FLAGS.embedding_size,
         FLAGS.use_sample_loss
     )
-    # model_path = os.path.join(FLAGS.train_dir, FLAGS.model_name)
-    # if(not os.path.exists(model_path)):
-    #     os.mkdir(model_path)
     ckpt = tf.train.get_checkpoint_state(model_path)
     if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
         print("Reading model parameters from %s" % ckpt.model_checkpoint_path)
@@ -101,18 +95,16 @@ def train():
         arr = converter.text_to_arr(text)
         sent_len_p = [1.0/len(train_sentence_length) for l in train_sentence_length]
         max_time = np.random.choice(train_sentence_length, 1, p=sent_len_p)[0]
-        # g = batch_generator(arr, FLAGS.batch_size, max_time)
         batch_cnt = get_batch_cnt(arr, FLAGS.batch_size, max_time)
         current_step_batch = 0
 
         # create model
         print("Creating %d layers of %d units for max time %d." % (FLAGS.num_layers, FLAGS.lstm_size, max_time))
         model = create_model(sess, converter.vocab_size, False, model_path)
-            # create_model(sess, converter.vocab_size, False, model_path)
         if(FLAGS.set_learning_rate > 0):
             model.set_learning_rate(sess, FLAGS.set_learning_rate)
 
-        step_time, loss = 0.0, 0.0
+        loss_per_checkpoint = 0.0
         current_step = 0
         previous_losses = []
         initial_state = sess.run(model.initial_state)
@@ -120,30 +112,25 @@ def train():
             g = batch_generator(arr, FLAGS.batch_size, max_time)
             for inputs, targets in g:
 
-                # print("inputs shape: " + str(np.array(inputs).shape))
-                # print("targets shape: " + str(np.array(targets).shape))
-
                 start_time = time.time()
                 batch_loss, final_state = model.train_step(sess, inputs, targets, initial_state)
-                step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
-                loss += batch_loss / FLAGS.steps_per_checkpoint
+                step_time = time.time() - start_time
+                loss_per_checkpoint += batch_loss / FLAGS.steps_per_checkpoint
                 current_step += 1
                 current_step_batch += 1
 
-                if current_step % FLAGS.steps_per_checkpoint == 0:
-                    perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
+                if current_step % FLAGS.steps_per_log == 0:
+                    perplexity = math.exp(float(batch_loss)) if batch_loss < 300 else float("inf")
                     print("global step %d learning rate %.4f step-time %.2f perplexity "
                           "%.2f" % (model.global_step.eval(), model.learning_rate.eval(),
                                     step_time, perplexity))
 
-                    if len(previous_losses) > 2 and loss > max(previous_losses[-3:]) and sess.run(model.learning_rate) >= 0.0002:
+                if current_step % FLAGS.steps_per_checkpoint == 0:
+                    if len(previous_losses) > 2 and loss_per_checkpoint > max(previous_losses[-3:]) and sess.run(model.learning_rate) >= 0.0002:
                         sess.run(model.learning_rate_decay_op)
-                    previous_losses.append(loss)
-
+                    previous_losses.append(loss_per_checkpoint)
+                    loss_per_checkpoint = 0.0
                     model.saver.save(sess, checkpoint_path, global_step=model.global_step)
-                    step_time, loss = 0.0, 0.0
-
-                    sys.stdout.flush()
 
                 if current_step_batch % batch_cnt == 0:
                     print("reset initial state")
@@ -158,10 +145,6 @@ def train():
                     batch_cnt = get_batch_cnt(arr, FLAGS.batch_size, max_time)
                     current_step_batch = 0
                     initial_state = sess.run(model.initial_state)
-                    # print("set model inputs")
-                    # model.inputs = tf.placeholder(tf.int32, shape=(FLAGS.batch_size, max_time), name='inputs')
-                    # model.targets = tf.placeholder(tf.int32, shape=(FLAGS.batch_size, max_time), name='targets')
-                    # print(tf.shape(model.inputs))
                     break
 
                 if current_step >= FLAGS.max_train_steps:
@@ -218,50 +201,6 @@ def sample():
             sys.stdout.write("> ")
             sys.stdout.flush()
             start_str = sys.stdin.readline().decode('utf-8')
-
-        #     # 不断生成字符，直到达到指定数目
-        #     for i in range(sample_length):
-        #         x = np.zeros((1, 1))
-        #         x[0, 0] = c
-        #         feed = {self.inputs: x,
-        #                 self.initial_state: new_state}
-        #         preds, new_state = sess.run([self.proba_prediction, self.final_state],
-        #                                     feed_dict=feed)
-        #
-        #         c = pick_top_n(preds, vocab_size)
-        #         samples.append(c)
-        #
-        #     print(samples)
-
-
-# def main(_):
-#     model_path = os.path.join(FLAGS.train_dir, FLAGS.model_name)
-#     if os.path.exists(model_path) is False:
-#         os.makedirs(model_path)
-#     with codecs.open(FLAGS.input_file, encoding='utf-8') as f:
-#         text = f.read().replace("\n", "")
-#     converter = TextConverter(text, FLAGS.max_vocab)
-#     converter.save_to_file(os.path.join(model_path, 'converter.pkl'))
-#
-#     arr = converter.text_to_arr(text)
-#     g = batch_generator(arr, FLAGS.num_seqs, FLAGS.num_steps)
-#     print(converter.vocab_size)
-#     model = CharRNN(converter.vocab_size,
-#                     num_seqs=FLAGS.num_seqs,
-#                     num_steps=FLAGS.num_steps,
-#                     lstm_size=FLAGS.lstm_size,
-#                     num_layers=FLAGS.num_layers,
-#                     learning_rate=FLAGS.learning_rate,
-#                     train_keep_prob=FLAGS.train_keep_prob,
-#                     use_embedding=FLAGS.use_embedding,
-#                     embedding_size=FLAGS.embedding_size
-#                     )
-#     model.train(g,
-#                 FLAGS.max_steps,
-#                 model_path,
-#                 FLAGS.save_every_n,
-#                 FLAGS.log_every_n,
-#                 )
 
 def main(_):
     if FLAGS.sampling:
