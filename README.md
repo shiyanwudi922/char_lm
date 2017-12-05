@@ -103,6 +103,7 @@ Reading model parameters from train_dir/novel/generate.ckpt-46000
 
 
 问题跟踪与改进
+
 <u>一、训练时样本的生成方式以及指定的样本长度对模型训练结果的影响（本问题中的实验语料为诗词语料）</u>
 
 1、使用循环的样本生成方式：在一个batch中，targets是inputs右移一位，同时targets的最后一个time step是inputs的第一个time step。进行以下两个实验：
